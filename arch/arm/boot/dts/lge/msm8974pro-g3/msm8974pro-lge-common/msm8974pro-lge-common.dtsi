@@ -79,6 +79,11 @@
 &soc {
 	/delete-node/spi_eth_phy_vreg;
 
+	kexec_hardboot-hole {
+		compatible = "qcom,msm-contig-mem";
+		qcom,memblock-reserve = <0xDD800000 0x1000>;
+	};
+
 	/* label: i2c_0 (label defined in msm8974.dtsi) */
 	i2c@f9967000 {
 		cell-index = <0>;
