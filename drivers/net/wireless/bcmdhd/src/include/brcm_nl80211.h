@@ -21,19 +21,12 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: brcm_nl80211.h 487126 2014-06-24 23:06:12Z $
+ * $Id: brcm_nl80211.h 515139 2014-11-13 08:47:48Z $
  *
  */
 
 #ifndef _brcm_nl80211_h_
 #define _brcm_nl80211_h_
-
-#define OUI_BRCM  0x001018
-
-enum wl_vendor_subcmd {
-	BRCM_VENDOR_SCMD_UNSPEC,
-	BRCM_VENDOR_SCMD_PRIV_STR
-};
 
 struct bcm_nlmsg_hdr {
 	uint cmd;	/* common ioctl definition */

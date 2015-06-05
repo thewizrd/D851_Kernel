@@ -1,27 +1,26 @@
 /*
- * Customer HW 10 dependant file
- *
- * Copyright (C) 1999-2014, Broadcom Corporation
- * 
- *      Unless you and Broadcom execute a separate written software license
- * agreement governing use of this software, this software is licensed to you
- * under the terms of the GNU General Public License version 2 (the "GPL"),
- * available at http://www.broadcom.com/licenses/GPLv2.php, with the
- * following added to such license:
- * 
- *      As a special exception, the copyright holders of this software give you
- * permission to link this software with independent modules, and to copy and
- * distribute the resulting executable under terms of your choice, provided that
- * you also meet, for each linked independent module, the terms and conditions of
- * the license of that module.  An independent module is a module which is not
- * derived from this software.  The special exception does not apply to any
- * modifications of the software.
- * 
- *      Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a license
- * other than the GPL, without Broadcom's express prior written consent.
- *
- * $Id: dhd_custom_lge.c 334946 2012-05-24 20:38:00Z $
+* Customer HW 10 dependant file
+* Copyright (C) 1999-2014, Broadcom Corporation
+* 
+*      Unless you and Broadcom execute a separate written software license
+* agreement governing use of this software, this software is licensed to you
+* under the terms of the GNU General Public License version 2 (the "GPL"),
+* available at http://www.broadcom.com/licenses/GPLv2.php, with the
+* following added to such license:
+* 
+*      As a special exception, the copyright holders of this software give you
+* permission to link this software with independent modules, and to copy and
+* distribute the resulting executable under terms of your choice, provided that
+* you also meet, for each linked independent module, the terms and conditions of
+* the license of that module.  An independent module is a module which is not
+* derived from this software.  The special exception does not apply to any
+* modifications of the software.
+* 
+*      Notwithstanding the above, under no circumstances may you combine this
+* software in any way with any other Broadcom software provided under a license
+* other than the GPL, without Broadcom's express prior written consent.
+
+ * $Id$
  */
 #ifdef CUSTOMER_HW10
 #include <typedefs.h>
@@ -33,6 +32,38 @@
 #include <dhd.h>
 #include <dhd_dbg.h>
 #include <dhd_linux.h>
+
+#if defined(DHD_TCP_WINSIZE_ADJUST)
+#include <linux/tcp.h>
+#include <net/tcp.h>
+#include <bcmendian.h>
+#endif /* DHD_TCP_WINSIZE_ADJUST */
+
+#ifdef SOFTAP_TPUT_ENHANCE
+#include <dhd_ip.h>
+#include <dhd_bus.h>
+#endif /* SOFTAP_TPUT_ENHANCE */
+
+#include <dhd_custom_lge.h>
+
+
+#if defined(DHD_TCP_WINSIZE_ADJUST)
+#define MIN_TCP_WIN_SIZE 18000
+#define WIN_SIZE_SCALE_FACTOR 2
+#define MAX_TARGET_PORTS 5
+static uint target_ports[MAX_TARGET_PORTS] = {20, 0, 0, 0, 0};
+uint dhd_use_tcp_window_size_adjust = FALSE;
+#endif /* DHD_TCP_WINSIZE_ADJUST */
+
+
+#if defined(DHD_TCP_WINSIZE_ADJUST)
+int dhd_adjust_tcp_winsize(int index, int pk_type, int op_mode, struct sk_buff *skb);
+#endif /* DHD_TCP_WINSIZE_ADJUST */
+
+#ifdef CUSTOM_DSCP_TO_PRIO_MAPPING
+extern int dhd_dscpmap_enable;
+#endif
+
 
 struct cntry_locales_custom {
 	char iso_abbrev[WLC_CNTRY_BUF_SZ]; /* ISO 3166-1 country abbreviation */
@@ -343,4 +374,120 @@ void dhd_control_pm(dhd_pub_t *dhd, uint *power_mode)
 	return;
 }
 #endif /* CONFIG_CONTROL_PM */
+#if defined(DHD_TCP_WINSIZE_ADJUST)
+static int dhd_port_list_match(int port)
+{
+	int i;
+	for (i = 0; i < MAX_TARGET_PORTS; i++) {
+		if (target_ports[i] == port)
+			return 1;
+	}
+	return 0;
+}
+int dhd_adjust_tcp_winsize(int index, int pk_type, int op_mode, struct sk_buff *skb)
+{
+
+	struct iphdr *ipheader;
+	struct tcphdr *tcpheader;
+	uint16 win_size;
+	int32 incremental_checksum;
+
+	if (!dhd_use_tcp_window_size_adjust || !(op_mode & DHD_FLAG_HOSTAP_MODE))
+		return 0;
+
+	if (skb == NULL || skb->data == NULL)
+		return 0;
+
+
+	if (index == 0 || pk_type == ETHER_TYPE_IP) {
+
+		ipheader = (struct iphdr*)(skb->data);
+
+		if (ipheader->protocol == IPPROTO_TCP) {
+			tcpheader = (struct tcphdr*) skb_pull(skb, (ipheader->ihl)<<2);
+			if (tcpheader) {
+				win_size = ntoh16(tcpheader->window);
+				if (win_size < MIN_TCP_WIN_SIZE &&
+					dhd_port_list_match(ntoh16(tcpheader->dest))) {
+					incremental_checksum = ntoh16(tcpheader->check);
+					incremental_checksum += win_size - win_size
+							*WIN_SIZE_SCALE_FACTOR;
+					if (incremental_checksum < 0)
+						--incremental_checksum;
+					tcpheader->window = hton16(win_size*WIN_SIZE_SCALE_FACTOR);
+					tcpheader->check = hton16((unsigned short)
+							incremental_checksum);
+				}
+			}
+			skb_push(skb, (ipheader->ihl)<<2);
+		}
+	}
+	return 0;
+}
+#endif /* DHD_TCP_WINSIZE_ADJUST */
+
+#ifdef SOFTAP_TPUT_ENHANCE
+int set_softap_params(dhd_pub_t *dhd)
+{
+	uint32 iovar_set;
+	char iov_buf[WLC_IOCTL_SMLEN];
+	int ret = 0;
+	if (dhd->op_mode & DHD_FLAG_HOSTAP_MODE) {
+#ifdef BCMSDIO
+		dhd_bus_setidletime(dhd, 100);
+#endif
+
+#ifdef DHDTCPACK_SUPPRESS
+		dhd_tcpack_suppress_set(dhd, TCPACK_SUP_OFF);
+#endif
+
+#if defined(DHD_TCP_WINSIZE_ADJUST)
+		dhd_use_tcp_window_size_adjust = TRUE;
+#endif
+
+#ifdef CUSTOM_DSCP_TO_PRIO_MAPPING
+		dhd_dscpmap_enable = 1;
+#endif
+		iovar_set = 0;
+		bcm_mkiovar("ampdu_rts", (char *)&iovar_set, 4, iov_buf, sizeof(iov_buf));
+		dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iov_buf, sizeof(iov_buf), TRUE, 0);
+
+#ifdef BCM4334_CHIP
+		iovar_set = 1;
+		dhd_wl_ioctl_cmd(dhd, WLC_SET_FAKEFRAG, (char *)&iov_buf, sizeof(iov_buf), TRUE, 0);
+
+		iovar_set = 10;
+		bcm_mkiovar("ampdu_retry_limit", (char *)&iovar_set, 4, iov_buf, sizeof(iov_buf));
+		dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iov_buf, sizeof(iov_buf), TRUE, 0);
+
+		iovar_set = 5;
+		bcm_mkiovar("ampdu_rr_retry_limit", (char *)&iovar_set, 4, iov_buf,
+		 sizeof(iov_buf));
+		dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iov_buf, sizeof(iov_buf), TRUE, 0);
+#endif
+
+#if defined(BCM4335_CHIP) || defined(BCM4339_CHIP)
+		bcm_mkiovar("bus:txglom_auto_control", 0, 0, iov_buf, sizeof(iov_buf));
+		if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, iov_buf, sizeof(iov_buf),
+			FALSE, 0)) < 0) {
+				iovar_set = 0;
+				bcm_mkiovar("bus:txglom", (char *)&iovar_set, 4, iov_buf,
+				 sizeof(iov_buf));
+				dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iov_buf, sizeof(iov_buf),
+				 TRUE, 0);
+		}
+		else {
+			if (iov_buf[0] == 0) {
+				iovar_set = 1;
+				bcm_mkiovar("bus:txglom_auto_control", (char *)&iovar_set, 4,
+				 iov_buf, sizeof(iov_buf));
+				dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iov_buf, sizeof(iov_buf),
+				 TRUE, 0);
+			}
+		}
+#endif /* defined(BCM4335_CHIP) || defined(BCM4339_CHIP) */
+	}
+	return ret;
+}
+#endif /* SOFTAP_TPUT_ENHANCE */
 #endif /* CUSTOMER_HW10 */

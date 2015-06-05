@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_common.c 492215 2014-07-20 16:44:15Z $
+ * $Id: dhd_common.c 515169 2014-11-13 13:19:49Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -58,6 +58,9 @@
 #endif
 #ifdef PNO_SUPPORT
 #include <dhd_pno.h>
+#endif
+#ifdef RTT_SUPPORT
+#include <dhd_rtt.h>
 #endif
 
 #define htod32(i) (i)
@@ -1395,6 +1398,8 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 	case WLC_E_PFN_SCAN_COMPLETE:
 	case WLC_E_PFN_SCAN_NONE:
 	case WLC_E_PFN_SCAN_ALLGONE:
+	case WLC_E_PFN_GSCAN_FULL_RESULT:
+	case WLC_E_PFN_SWC:
 		DHD_EVENT(("PNOEVENT: %s\n", event_name));
 		break;
 
@@ -1684,12 +1689,15 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata,
 	switch (type) {
 #ifdef PROP_TXSTATUS
 	case WLC_E_FIFO_CREDIT_MAP:
-		dhd_wlfc_enable(dhd_pub);
-		dhd_wlfc_FIFOcreditmap_event(dhd_pub, event_data);
-		WLFC_DBGMESG(("WLC_E_FIFO_CREDIT_MAP:(AC0,AC1,AC2,AC3),(BC_MC),(OTHER): "
-			"(%d,%d,%d,%d),(%d),(%d)\n", event_data[0], event_data[1],
-			event_data[2],
-			event_data[3], event_data[4], event_data[5]));
+		if (dhd_wlfc_enable(dhd_pub) == BCME_OK) {
+			dhd_wlfc_FIFOcreditmap_event(dhd_pub, event_data);
+			WLFC_DBGMESG(("WLC_E_FIFO_CREDIT_MAP:(AC0,AC1,AC2,AC3),(BC_MC),(OTHER): "
+				"(%d,%d,%d,%d),(%d),(%d)\n", event_data[0], event_data[1],
+				event_data[2],
+				event_data[3], event_data[4], event_data[5]));
+		} else {
+			DHD_ERROR((" dhd_wlfc_enable failed \n"));
+		}
 		break;
 
 	case WLC_E_BCMC_CREDIT_SUPPORT:
@@ -1790,6 +1798,11 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata,
 		dhd_pno_event_handler(dhd_pub, event, (void *)event_data);
 		break;
 #endif 
+#if defined(RTT_SUPPORT)
+	case WLC_E_PROXD:
+		dhd_rtt_event_handler(dhd_pub, event, (void *)event_data);
+		break;
+#endif /* RTT_SUPPORT */
 		/* These are what external supplicant/authenticator wants */
 	case WLC_E_ASSOC_IND:
 	case WLC_E_AUTH_IND:
@@ -2877,7 +2890,7 @@ wl_iw_parse_channel_list_tlv(char** list_str, uint16* channel_list,
  *  SSIDs list parsing from cscan tlv list
  */
 int
-wl_iw_parse_ssid_list_tlv(char** list_str, wlc_ssid_t* ssid, int max, int *bytes_left)
+wl_iw_parse_ssid_list_tlv(char** list_str, wlc_ssid_ext_t* ssid, int max, int *bytes_left)
 {
 	char* str;
 	int idx = 0;
@@ -2925,6 +2938,7 @@ wl_iw_parse_ssid_list_tlv(char** list_str, wlc_ssid_t* ssid, int max, int *bytes
 
 			*bytes_left -= ssid[idx].SSID_len;
 			str += ssid[idx].SSID_len;
+			ssid[idx].hidden = TRUE;
 
 			DHD_TRACE(("%s :size=%d left=%d\n",
 				(char*)ssid[idx].SSID, ssid[idx].SSID_len, *bytes_left));

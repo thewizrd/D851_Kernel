@@ -20,7 +20,7 @@
  *      Notwithstanding the above, under no circumstances may you combine this
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
- * $Id: bcmutils.c 496061 2014-08-11 06:14:48Z $
+ * $Id: bcmutils.c 511837 2014-10-31 03:19:34Z $
  */
 
 #include <bcm_cfg.h>
@@ -67,6 +67,7 @@ void *_bcmutils_dummy_fn = NULL;
 #ifdef CUSTOM_DSCP_TO_PRIO_MAPPING
 #define CUST_IPV4_TOS_PREC_MASK 0x3F
 #define DCSP_MAX_VALUE 64
+extern uint dhd_dscpmap_enable;
 /* 0:BE,1:BK,2:RESV(BK):,3:EE,:4:CL,5:VI,6:VO,7:NC */
 int dscp2priomap[DCSP_MAX_VALUE]=
 {
@@ -840,9 +841,14 @@ pktsetprio(void *pkt, bool update_vtag)
 #ifndef CUSTOM_DSCP_TO_PRIO_MAPPING
 			priority = (int)(tos_tc >> IPV4_TOS_PREC_SHIFT);
 #else
-			priority = (int)dscp2priomap[((tos_tc >> IPV4_TOS_DSCP_SHIFT)
-				& CUST_IPV4_TOS_PREC_MASK)];
-#endif
+			if (dhd_dscpmap_enable) {
+				priority = (int)dscp2priomap[((tos_tc >> IPV4_TOS_DSCP_SHIFT)
+					& CUST_IPV4_TOS_PREC_MASK)];
+			}
+			else {
+				priority = (int)(tos_tc >> IPV4_TOS_PREC_SHIFT);
+			}
+#endif /* CUSTOM_DSCP_TO_PRIO_MAPPING */
 			break;
 		}
 
