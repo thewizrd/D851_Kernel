@@ -840,6 +840,9 @@ CONFIG_PM_DEVFREQ=y
 CONFIG_LGE_DEVFREQ_DFPS=y
 CONFIG_PM_OPP=y
 
+# Sharpening Control
+CONFIG_LGE_SHARPENING=y
+
 # MultiROM Support
 # Edited By: Eliminater74
 CONFIG_KEXEC=y
