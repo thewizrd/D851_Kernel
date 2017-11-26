@@ -854,8 +854,8 @@ CONFIG_CRYPTO_DEV_KFIPS_PERF=y
 # the first 5 options enable Linux's built-in proto-FIPS
 # functonality, and we use CONFIG_CRYPTO_FIPS to turn on
 # our full FIPS mode as well
-CONFIG_CRYPTO_TEST=y
-CONFIG_CRYPTO_MANAGER_DISABLE_TESTS=n
+# CONFIG_CRYPTO_TEST is not set
+CONFIG_CRYPTO_MANAGER_DISABLE_TESTS=y
 CONFIG_CRYPTO_ANSI_CPRNG=y
 CONFIG_CRYPTO_FIPS=y
 CONFIG_CRYPTO_SHA512=y
@@ -863,10 +863,10 @@ CONFIG_CRYPTO_CTR=y
 CONFIG_CRYPTODEV=y
 # the next 4 options disable the Qualcomm crypto device,
 # so it doesn't take priority over FIPS validated crypto
-CONFIG_CRYPTO_DEV_QCE=n
-CONFIG_CRYPTO_DEV_QCEDEV=n
-CONFIG_CRYPTO_DEV_QCRYPTO=n
-CONFIG_DM_REQ_CRYPT=n
+CONFIG_CRYPTO_DEV_QCE=y
+CONFIG_CRYPTO_DEV_QCEDEV=y
+CONFIG_CRYPTO_DEV_QCRYPTO=y
+CONFIG_DM_REQ_CRYPT=y
 # the next two options ensure that the kernel log buffer
 # is large enough that we'll see all the FIPS startup
 # output, and provide the address where the kernel
